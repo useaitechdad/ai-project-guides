@@ -1,0 +1,17 @@
+# Only the explicitly listed audience files may be staged by default.
+*
+!*/
+!/.gitignore
+!/README.md
+!/LICENSE
+!/templates/README.md
+!/templates/SPEC.md
+!/templates/PROMPTS.md
+!/templates/STEPS.md
+!/templates/RESULTS.md
+!/projects/macbook-pro-ubuntu/README.md
+!/projects/macbook-pro-ubuntu/SPEC.md
+!/projects/macbook-pro-ubuntu/PROMPTS.md
+!/projects/macbook-pro-ubuntu/STEPS.md
+!/projects/macbook-pro-ubuntu/RESULTS.md
+
