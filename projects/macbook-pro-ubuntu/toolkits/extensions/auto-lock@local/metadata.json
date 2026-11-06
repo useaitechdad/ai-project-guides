@@ -1,0 +1,6 @@
+{
+  "uuid": "auto-lock@local",
+  "name": "Auto Lock Toggle",
+  "description": "Top bar toggle for GNOME's automatic screen lock. Idle dimming is unaffected.",
+  "shell-version": ["46"]
+}

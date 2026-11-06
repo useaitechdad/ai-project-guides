@@ -1,0 +1,7 @@
+{
+  "uuid": "keep-awake@local",
+  "name": "Keep Awake",
+  "description": "Top bar toggle that stops the laptop sleeping, including when the lid is closed.",
+  "shell-version": ["46"],
+  "session-modes": ["user", "unlock-dialog"]
+}

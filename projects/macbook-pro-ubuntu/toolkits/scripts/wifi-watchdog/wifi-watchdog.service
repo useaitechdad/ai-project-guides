@@ -1,0 +1,15 @@
+# Copyright 2026 Use AI with Tech Dad
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Detect and recover stalled Wi-Fi
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+ExecStart=/usr/local/bin/wifi-watchdog
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

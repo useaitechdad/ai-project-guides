@@ -1,0 +1,114 @@
+#!/bin/bash
+# Copyright 2026 Use AI with Tech Dad
+# SPDX-License-Identifier: Apache-2.0
+
+# Modified 2026-11-05: emit fixed status summaries, not raw network diagnostics.
+# Spots Wi-Fi that looks connected but has stopped passing traffic, records what
+# the laptop can and can't reach, then switches the radio off and on.
+#
+# Read its status summaries with: journalctl -u wifi-watchdog -o cat
+#
+# It stays out of the way when Wi-Fi was turned off on purpose, when the laptop
+# isn't connected, or when another network, such as USB Ethernet, is in use.
+
+set -u
+
+IFACE=${WIFI_WATCHDOG_IFACE:-wlp2s0}
+INTERVAL=${WIFI_WATCHDOG_INTERVAL:-15}
+FAILS_BEFORE_RECOVERY=3
+COOLDOWN=${WIFI_WATCHDOG_COOLDOWN:-300}
+RECOVERY_WAIT=45
+INTERNET_HOSTS=(1.1.1.1 8.8.8.8)
+
+log() { echo "$*"; }
+
+gateway() { ip -4 route show default dev "$IFACE" 2>/dev/null | awk '{print $3; exit}'; }
+
+reachable() { ping -c 1 -W 2 -I "$IFACE" -q "$1" >/dev/null 2>&1; }
+
+wifi_in_use() {
+    [ "$(nmcli -g WIFI radio 2>/dev/null)" = "enabled" ] || return 1
+    [ "$(nmcli -g GENERAL.STATE device show "$IFACE" 2>/dev/null)" = "100 (connected)" ] || return 1
+    ip -4 route show default 2>/dev/null | head -n 1 | grep -Fq "dev $IFACE"
+}
+
+check_network() {
+    GATEWAY_OK=no
+    INTERNET_OK=no
+    reachable "$(gateway)" && GATEWAY_OK=yes
+    for host in "${INTERNET_HOSTS[@]}"; do
+        if reachable "$host"; then
+            INTERNET_OK=yes
+            break
+        fi
+    done
+}
+
+network_ok() { [ "$GATEWAY_OK" = yes ] && [ "$INTERNET_OK" = yes ]; }
+
+diagnostics() {
+    local dns=no connectivity
+    timeout 4 getent hosts example.com >/dev/null 2>&1 && dns=yes
+    connectivity=$(nmcli networking connectivity check 2>/dev/null)
+    case "$connectivity" in
+        none|portal|limited|full|unknown) ;;
+        *) connectivity=unknown ;;
+    esac
+    # Never copy raw link, neighbour, kernel or command-error text into logs.
+    log "DIAG gateway=$GATEWAY_OK internet=$INTERNET_OK dns=$dns connectivity=$connectivity"
+}
+
+recover() {
+    local started=$SECONDS
+    log "RECOVERY switching Wi-Fi off and on"
+    nmcli radio wifi off >/dev/null 2>&1 || { log "RECOVERY failed to disable Wi-Fi"; return 1; }
+    sleep 2
+    nmcli radio wifi on >/dev/null 2>&1 || { log "RECOVERY failed to enable Wi-Fi"; return 1; }
+
+    while [ $((SECONDS - started)) -lt "$RECOVERY_WAIT" ]; do
+        sleep 2
+        wifi_in_use || continue
+        check_network
+        if network_ok; then
+            log "RECOVERED in $((SECONDS - started))s"
+            return
+        fi
+    done
+    log "NOT RECOVERED after ${RECOVERY_WAIT}s; gateway=$GATEWAY_OK internet=$INTERNET_OK"
+    diagnostics
+}
+
+log "started: monitoring Wi-Fi"
+fails=0
+first_fail=0
+last_recovery=$((SECONDS - COOLDOWN))
+
+while true; do
+    if ! wifi_in_use; then
+        fails=0
+        sleep "$INTERVAL"
+        continue
+    fi
+
+    check_network
+    if network_ok; then
+        if [ "$fails" -gt 0 ]; then
+            log "CLEARED on its own after $((SECONDS - first_fail))s"
+        fi
+        fails=0
+    else
+        fails=$((fails + 1))
+        if [ "$fails" -eq 1 ]; then
+            first_fail=$SECONDS
+            log "FAILING gateway=$GATEWAY_OK internet=$INTERNET_OK"
+        fi
+        if [ "$fails" -ge "$FAILS_BEFORE_RECOVERY" ] &&
+            [ $((SECONDS - last_recovery)) -ge "$COOLDOWN" ]; then
+            diagnostics
+            recover
+            last_recovery=$SECONDS
+            fails=0
+        fi
+    fi
+    sleep "$INTERVAL"
+done

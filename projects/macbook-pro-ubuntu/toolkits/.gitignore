@@ -1,0 +1,10 @@
+# Copyright 2026 Use AI with Tech Dad
+# SPDX-License-Identifier: Apache-2.0
+
+# Modified 2026-11-05: toolkit-only exclusions.
+.DS_Store
+__pycache__/
+*.pyc
+*.log
+.env
+.env.*

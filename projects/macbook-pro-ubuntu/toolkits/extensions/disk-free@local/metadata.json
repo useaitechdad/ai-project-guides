@@ -1,0 +1,6 @@
+{
+  "uuid": "disk-free@local",
+  "name": "Disk Free",
+  "description": "Shows free space on the root filesystem in the top bar.",
+  "shell-version": ["46"]
+}

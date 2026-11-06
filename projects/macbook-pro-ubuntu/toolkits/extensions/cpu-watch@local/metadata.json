@@ -1,0 +1,6 @@
+{
+  "uuid": "cpu-watch@local",
+  "name": "CPU Watch",
+  "description": "Top bar CPU temperature and load, with fan speed, throttling and the busiest processes in its menu.",
+  "shell-version": ["46"]
+}

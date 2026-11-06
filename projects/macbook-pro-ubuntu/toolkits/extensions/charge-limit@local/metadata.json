@@ -1,0 +1,6 @@
+{
+  "uuid": "charge-limit@local",
+  "name": "Charge Limit",
+  "description": "Top bar menu that sets the MacBook battery charge limit through the charge-limit tool.",
+  "shell-version": ["46"]
+}

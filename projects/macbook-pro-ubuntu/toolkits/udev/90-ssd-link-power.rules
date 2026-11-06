@@ -1,0 +1,7 @@
+# Copyright 2026 Use AI with Tech Dad
+# SPDX-License-Identifier: Apache-2.0
+
+# Turns off PCIe link power saving for the MacBook's Samsung SSD controller
+# (144d:1600), as a test fix for the sign-in "Authentication error" freezes.
+# To undo: delete this file and restart.
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x144d", ATTR{device}=="0x1600", ATTR{link/l1_aspm}="0", ATTR{link/clkpm}="0"

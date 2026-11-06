@@ -1,0 +1,238 @@
+#!/usr/bin/python3 -I
+# Copyright 2026 Use AI with Tech Dad
+# SPDX-License-Identifier: Apache-2.0
+
+"""Set the battery charge limit on Intel Macs running Linux.
+
+  charge-limit        show the current limit and battery state
+  charge-limit 60     stop charging at about 60% (run with sudo)
+  charge-limit 100    back to normal charging (run with sudo)
+  charge-limit --get  print only the current limit (used by the top bar)
+
+The limit lives in the SMC's BCLM key, so it stays set after a reboot and needs
+no background service. A full SMC reset clears it.
+
+The stock applesmc driver can only read this key. To write it, this tool
+unloads applesmc so nothing else talks to the SMC, repeats the driver's write
+sequence through /dev/port, reads the value back, and reloads the driver.
+Port sequence follows drivers/hwmon/applesmc.c in the Linux kernel.
+"""
+import fcntl
+import glob
+import os
+import signal
+import subprocess
+import sys
+import time
+
+KEY = "BCLM"
+MIN_LIMIT, MAX_LIMIT = 20, 100
+
+SMC_SYSFS = "/sys/devices/platform/applesmc.768"
+LOCK_FILE = "/run/charge-limit.lock"
+
+DATA_PORT = 0x300
+CMD_PORT = 0x304
+READ_CMD = 0x10
+WRITE_CMD = 0x11
+
+AWAITING_DATA = 0x01
+IB_CLOSED = 0x02
+BUSY = 0x04
+
+
+class SMCError(Exception):
+    pass
+
+
+class SMC:
+    def __init__(self):
+        self.fd = os.open("/dev/port", os.O_RDWR | os.O_SYNC)
+
+    def close(self):
+        os.close(self.fd)
+
+    def inb(self, port):
+        return os.pread(self.fd, 1, port)[0]
+
+    def outb(self, value, port):
+        os.pwrite(self.fd, bytes([value]), port)
+
+    def wait_status(self, value, mask):
+        delay_us = 8
+        for i in range(24):
+            if self.inb(CMD_PORT) & mask == value:
+                return
+            time.sleep(delay_us / 1_000_000)
+            if i > 9:
+                delay_us <<= 1
+        raise SMCError(f"timed out waiting for SMC status {value:#x}")
+
+    def send_byte(self, value, port):
+        self.wait_status(0, IB_CLOSED)
+        # Must stay a separate read after IB_CLOSED falls; see send_byte() in
+        # the kernel driver.
+        self.wait_status(BUSY, BUSY)
+        self.outb(value, port)
+
+    def send_command(self, cmd):
+        self.wait_status(0, IB_CLOSED)
+        self.outb(cmd, CMD_PORT)
+
+    def sane(self):
+        try:
+            self.wait_status(0, BUSY)
+        except SMCError:
+            self.send_command(READ_CMD)
+            self.wait_status(0, BUSY)
+
+    def send_key(self, key):
+        for char in key.encode("ascii"):
+            self.send_byte(char, DATA_PORT)
+
+    def read_u8(self, key):
+        self.sane()
+        self.send_command(READ_CMD)
+        self.send_key(key)
+        self.send_byte(1, DATA_PORT)
+        self.wait_status(AWAITING_DATA | BUSY, AWAITING_DATA | BUSY)
+        value = self.inb(DATA_PORT)
+        for _ in range(16):
+            time.sleep(8 / 1_000_000)
+            if not self.inb(CMD_PORT) & AWAITING_DATA:
+                break
+            self.inb(DATA_PORT)
+        self.wait_status(0, BUSY)
+        return value
+
+    def write_u8(self, key, value):
+        self.sane()
+        self.send_command(WRITE_CMD)
+        self.send_key(key)
+        self.send_byte(1, DATA_PORT)
+        self.send_byte(value, DATA_PORT)
+        self.wait_status(0, BUSY)
+
+
+def read_key_with_driver(name):
+    """Return (type, value) for an SMC key through the stock driver."""
+    with open(f"{SMC_SYSFS}/key_count") as f:
+        count = int(f.read())
+    for index in range(count):
+        with open(f"{SMC_SYSFS}/key_at_index", "w") as f:
+            f.write(str(index))
+        with open(f"{SMC_SYSFS}/key_at_index_name") as f:
+            if f.read().strip("\0\n ") != name:
+                continue
+        with open(f"{SMC_SYSFS}/key_at_index_type") as f:
+            key_type = f.read().strip("\0\n ")
+        with open(f"{SMC_SYSFS}/key_at_index_data", "rb") as f:
+            return key_type, f.read()[0]
+    return None
+
+
+def require_supported():
+    if os.geteuid() != 0:
+        sys.exit("charge-limit: run this with sudo")
+    if not os.path.isdir(SMC_SYSFS):
+        sys.exit("charge-limit: no Apple SMC found (is the applesmc driver loaded?)")
+    found = read_key_with_driver(KEY)
+    if found is None:
+        sys.exit(f"charge-limit: this Mac's SMC has no {KEY} key, so it can't be limited")
+    if found[0] != "ui8":
+        sys.exit(f"charge-limit: unexpected {KEY} type {found[0]!r}; not touching it")
+    return found[1]
+
+
+def battery_status():
+    batteries = glob.glob("/sys/class/power_supply/BAT*")
+    adapters = glob.glob("/sys/class/power_supply/ADP*")
+    if not batteries:
+        return "unknown"
+    with open(f"{batteries[0]}/status") as f:
+        status = f.read().strip()
+    plugged = "unknown"
+    if adapters:
+        with open(f"{adapters[0]}/online") as f:
+            plugged = "plugged in" if f.read().strip() == "1" else "on battery"
+    return f"{status.lower()}, {plugged}"
+
+
+def restore_driver():
+    """Reload applesmc, then upower, which holds the keyboard backlight."""
+    subprocess.run(["modprobe", "applesmc"], check=True)
+    subprocess.run(["systemctl", "try-restart", "upower"], check=True)
+
+
+def write_limit(limit, old_limit):
+    # Ctrl+C must not stop this between unloading and reloading the driver.
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, signal.SIG_IGN)
+
+    subprocess.run(["modprobe", "-r", "applesmc"], check=True)
+    try:
+        smc = SMC()
+        try:
+            if smc.read_u8(KEY) != old_limit:
+                raise SMCError("port read disagrees with the driver; nothing written")
+            smc.write_u8(KEY, limit)
+            value = smc.read_u8(KEY)
+            if value != limit:
+                smc.write_u8(KEY, old_limit)
+                raise SMCError(f"read back {value} after writing {limit}; restored {old_limit}")
+        finally:
+            smc.close()
+    finally:
+        restore_driver()
+
+
+def current_limit():
+    if os.geteuid() != 0:
+        sys.exit("charge-limit: run this with sudo")
+    # Waiting on the lock keeps a read from landing while the driver is unloaded.
+    with open(LOCK_FILE, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        found = read_key_with_driver(KEY)
+    if found is None:
+        sys.exit(f"charge-limit: this Mac's SMC has no {KEY} key")
+    return found[1]
+
+
+def show():
+    print(f"Charge limit: {current_limit()}%")
+    print(f"Battery:      {battery_status()}")
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        show()
+        return
+    if args == ["--get"]:
+        print(current_limit())
+        return
+    if len(args) != 1 or not args[0].isdecimal():
+        sys.exit(__doc__)
+
+    limit = int(args[0])
+    if not MIN_LIMIT <= limit <= MAX_LIMIT:
+        sys.exit(f"charge-limit: choose a value from {MIN_LIMIT} to {MAX_LIMIT}")
+
+    with open(LOCK_FILE, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        old_limit = require_supported()
+        try:
+            write_limit(limit, old_limit)
+        except (SMCError, OSError, subprocess.CalledProcessError) as e:
+            sys.exit(f"charge-limit: failed: {e}")
+
+        # A fresh read through the reloaded driver is the real confirmation.
+        confirmed = read_key_with_driver(KEY)
+        if confirmed is None or confirmed[1] != limit:
+            sys.exit(f"charge-limit: driver reads {confirmed} after writing {limit}")
+
+    print(f"Charge limit set: {old_limit}% -> {limit}%")
+
+
+if __name__ == "__main__":
+    main()
