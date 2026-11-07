@@ -2,9 +2,11 @@
 
 Use an AI agent to plan a practical project, work through it in stages, and check the result.
 
-These guides accompany [Use AI with Tech Dad](https://github.com/useaitechdad). Each project includes a specification, prompts, instructions and an honest results record. You can use them with your preferred assistant; command execution and SSH capabilities vary by tool.
+These guides accompany [Use AI with Tech Dad](https://github.com/useaitechdad). Projects include staged guides with specifications, prompts, instructions and results records, or a focused starter prompt. You can use them with your preferred assistant; command execution and SSH capabilities vary by tool.
 
 ## Start here
+
+For the spare-PC workflow, start with the [AI worker prompt guide](projects/pc-worker/README.md). The steps below describe the staged project templates.
 
 1. Read the [MacBook-to-Ubuntu example](projects/macbook-pro-ubuntu/README.md), or copy the [blank templates](templates/README.md) into your own local project folder.
 2. Fill in `SPEC.md` with your situation. Treat example hardware and settings as context, not defaults for your machine.
@@ -19,6 +21,7 @@ Keep your filled-in working copy private. Replace private account names, address
 | Project | Purpose | Reference configuration |
 | --- | --- | --- |
 | [MacBook Pro → Ubuntu](projects/macbook-pro-ubuntu/README.md) | Give an older laptop a useful role with AI-assisted preparation | Late 2013 Intel MacBookPro11,2; Ubuntu 24.04 LTS |
+| [AI worker — starter prompt](projects/pc-worker/README.md) | Guide your coding agent through a spare-PC worker, async jobs and selective result retrieval | Adapt to your hardware; basic queue needs no GPU |
 
 The templates distinguish a reported experience, an observed configuration and a measured result. An AI suggestion is not a completed check. For example, a video codec label does not by itself prove hardware decoding.
 

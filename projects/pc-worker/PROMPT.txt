@@ -1,0 +1,101 @@
+BUILD YOUR OWN AI WORKER — STARTER PROMPT
+Use AI with Tech Dad
+
+How to use
+Copy everything between BEGIN PROMPT and END PROMPT into a coding agent that can inspect your computers and edit files. Fill in what you know below; leave unknown values blank. Start on your main computer. An agent without terminal access can help plan, but cannot verify or install the setup for you.
+
+This is a guide for building a similar workflow, not an installer or a copy of Tech Dad's private worker software. Your agent must adapt the implementation to your hardware and verify it. No GPU or particular brand of laptop is required for the basic queue.
+
+BEGIN PROMPT
+
+Help me turn a spare PC into a private worker for jobs submitted by coding agents on my main computer. Start with a small working system, then extend it only when needed.
+
+MY DETAILS — unknown is an acceptable answer
+- Main computer and OS:
+- Spare PC and current OS:
+- CPU / RAM / GPU, if known:
+- Existing files or operating systems that must be preserved:
+- Available working disk space; optional second disk:
+- First task I want to offload:
+- Other computers that may submit work later:
+- Existing SSH access, if any:
+- Work folder I authorize you to use on my main computer:
+- Whether I want Ubuntu installed, or already have it:
+
+1. INSPECT AND PROPOSE
+Use read-only checks within the authorized environment to identify the OS, hardware, disk space, network reachability and existing tools. Ask only for information you cannot discover. Do not assume access to the spare PC just because you can use my main computer.
+
+Explain whether this machine is useful for my chosen task. Separate CPU jobs, supported GPU jobs, and file transfers. Offloading can free the main computer even when the worker is not faster. Do not promise speedups, lower temperatures or lower power use without evidence.
+
+Recommend a supported Ubuntu release if Ubuntu is appropriate. Check current official installation and GPU-driver documentation before giving version-specific commands. The basic worker must work without GPU acceleration. Identify what the particular GPU can actually accelerate before enabling it.
+
+Present a concrete plan, the settings I need to choose, and a small first milestone. Wait for my approval before changing the spare PC. Never format a disk, replace an OS, repartition, delete existing data, reboot, change networking or firewall settings, expose a service publicly, or incur charges without explaining the exact action and obtaining approval. An initial planning approval is not blanket permission for those actions. Provide manual installation steps if you cannot safely perform them yourself.
+
+2. CONNECT FROM MY MAIN COMPUTER
+After approval, set up private-network SSH access with key authentication and a dedicated unprivileged worker account. Keep the worker service and its jobs unprivileged. Explain any one-time administrative installation steps separately.
+
+Verify the host fingerprint through a trusted channel before accepting it. Do not disable SSH host-key checking. Do not put passwords, private keys or cloud tokens in prompts, repositories, logs or example files. Reuse suitable authorized SSH configuration; do not overwrite unrelated entries.
+
+Use a memorable user-account SSH alias, such as ai-worker, so other agents on this computer can reuse it. Clearly distinguish the machine running each command. Confirm the actual host, account, working directories and permissions. Keep the service private; no router port forwarding is needed for this workflow.
+
+3. BUILD THE SMALLEST USEFUL QUEUE
+Use an existing suitable maintained tool if it meets the requirements; otherwise implement a small documented service. Do not assume any private Tech Dad repository or command is available.
+
+Requirements:
+- Multiple clients can submit jobs, but one heavy job runs at a time globally on this worker.
+- Accepted waiting jobs run first in, first out. Define ordering for simultaneous arrivals, and prevent two worker processes from claiming the same job.
+- Submitting returns promptly with a unique job ID. It does not keep the calling agent blocked until the work finishes.
+- Persist job state on disk: queued, running, succeeded, failed, and cancelled if cancellation is implemented.
+- Each job records its owner/client, operation, validated parameters and input files. Keep owners and outputs separate.
+- Provide documented operations to submit, check status, read a bounded log, and fetch a result or preview.
+- Record a clear exit result, useful error messages and timeouts. Do not report success until the expected outputs have been verified.
+- Handle restart and interrupted jobs explicitly. Do not silently rerun a task with external side effects or duplicate an upload.
+- Keep heavy working files on the worker; fetch only the outputs I need.
+
+Start with one allowlisted operation. A tiny file-processing job that reads a supplied text file and produces a word-count report is enough to prove the workflow without extra tools or a GPU. Then add my first real task.
+
+Prefer predefined operations with validated arguments and files confined to per-job directories. Prevent path traversal, unexpected overwrite, arbitrary shell interpolation and cross-job file access. An allowlist alone is not a security sandbox: untrusted inputs or tools may also need isolation and resource limits. Keep secrets outside job inputs and prevent jobs from reading credentials they do not need.
+
+Do not offer unrestricted remote shell execution as the default job interface. If my actual task requires running supplied scripts, explain the additional access that grants, propose appropriate isolation and permissions, and get my explicit agreement. A private network alone does not make submitted code safe.
+
+4. TEACH MY AGENTS THE ASYNCHRONOUS WORKFLOW
+After the interface works, create a concise instruction file in my authorized workspace, using its existing agent guidance convention. Ask before placing persistent instructions outside that workspace. Include the actual installed commands and a neutral example, not guessed CLI syntax.
+
+The instructions should tell an agent to:
+- Prepare the necessary inputs and submit a supported job once.
+- Save the job ID, its owner and its expected output in the task record.
+- Continue useful independent work while the worker runs.
+- Check status periodically with a sensible delay or backoff; avoid rapid polling.
+- Fetch and verify the result before starting dependent work.
+- Inspect failure status and logs before deciding whether a retry is safe.
+- Never assume that submitting a job makes an agent automatically return; record the follow-up responsibility.
+
+Explain how a manager can assign independent artwork, script and review tasks to separate agents while their heavy jobs share the single queue. Rendering waits for its inputs; reviewing waits for its output. More agents do not create extra worker capacity. Bound the backlog, avoid duplicate submissions and name who owns each result. Do not claim automatic load balancing unless it is actually implemented.
+
+5. MAKE STORAGE POLICY EXPLICIT
+First provide a manual list and dry-run cleanup command. Explain what each directory contains and how to fetch outputs. Keep deletion disabled until I approve the retention policy.
+
+Optionally propose moving completed bulky outputs from SSD to a second disk while preserving fetch access. Confirm the second disk is mounted correctly, has space and contains no data you may overwrite. Verify copied data before removing any working copy. Never treat a missing mount as an empty destination directory.
+
+Three days before moving eligible outputs and thirty days before deleting disposable outputs are examples to discuss, not settings you may silently enable. Protect queued/running jobs, pinned results, unique originals and credentials. Explain the actual automation mechanism you install, whether a service's idle housekeeping or a scheduled timer. Working storage is not a backup.
+
+6. VERIFY AND HAND OVER
+With my approval, demonstrate three tiny jobs A, B and C. Show the returned job IDs, A running while B/C wait, then their completion order. Verify that submit returns before a deliberately slow sample finishes, and that a second worker cannot run another heavy job concurrently.
+
+Show one intentional failure and its log, a safe interrupted-job/restart check, and one successful result fetched to my main computer. Confirm hashes for a transferred test file. Use disposable test inputs only; do not benchmark large media, download models or perform bulk transfers without asking.
+
+Deliver:
+- A short architecture diagram and a beginner-friendly README.
+- An example configuration with placeholders and a table explaining every setting: where it is used, how to choose it, its default, and whether it is sensitive.
+- The real submit/status/log/fetch commands, with examples labelled by machine.
+- A description of the job types supported now and how to add another safely.
+- Agent instructions for job ownership, asynchronous follow-up and dependencies.
+- Start/stop, troubleshooting, uninstall and recovery instructions that preserve data.
+- The verification results, limitations and any steps I still need to complete.
+
+Keep the first version small. Do not add a web dashboard, public endpoint, cloud credentials or extra agents unless they serve an agreed requirement. Do not say the setup is complete until the demonstrated job has been fetched and verified successfully.
+
+END PROMPT
+
+Optional next steps
+After the basic workflow works, ask your agent to add one specific operation at a time: a supported video encode, an image-processing task, or a controlled file transfer. Cloud upload credentials and GPU acceleration need their own configuration and verification.
